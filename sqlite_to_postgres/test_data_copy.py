@@ -1,6 +1,6 @@
+import logging
 import os
 import sqlite3
-from datetime import datetime
 
 import psycopg2
 import pytest
@@ -20,14 +20,16 @@ def postgres_connection():
                     'port': os.environ.get('DB_PORT')}
     with psycopg2.connect(**postgres_dsl) as connection:
         yield connection
+    connection.close()
 
 @pytest.fixture
 def sqlite_connection():
     """Создаем соединение SQLite"""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(BASE_DIR, "db.sqlite")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "db.sqlite")
     with sqlite3.connect(db_path) as connection:
         yield connection
+    connection.close()
 
 
 def get_row_count(cursor, table_name: str) -> int:
@@ -57,7 +59,7 @@ def test_load_from_sqlite_row_count(sqlite_connection, postgres_connection):
             table_name = empty_dc.get_table_name()
             sqlite_number = get_row_count(sqlite_cursor, table_name)
             postgres_number = get_row_count(postgres_cursor, f"content.{table_name}")
-            print(f"{table_name}: {sqlite_number} -> {postgres_number}")
+            logging.info(f"{table_name}: {sqlite_number} -> {postgres_number}")
             assert sqlite_number == postgres_number
     finally:
         sqlite_cursor.close()
@@ -68,7 +70,6 @@ def test_load_from_sqlite_last_rows(sqlite_connection, postgres_connection):
     """Тест совпадения идентификаторов в таблицах"""
     sqlite_cursor = sqlite_connection.cursor()
     postgres_cursor = postgres_connection.cursor()
-
     try:
         for dc in movies_dcs:
             empty_dc: SQLDataClass = dc([], [])
