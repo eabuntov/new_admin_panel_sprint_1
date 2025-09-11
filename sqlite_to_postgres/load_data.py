@@ -20,25 +20,26 @@ def load_from_sqlite(connection: sqlite3.Connection, pg_connection):
     """
     logging.info("Старт переноса данных из SQLite в Postgres")
     cursor = connection.cursor()
-    pg_cursor = pg_connection.cursor()
-    for dc in movies_dcs:
-        empty_dc: SQLDataClass = dc([], [])
-        logging.info(f"Таблица {empty_dc.get_table_name()}")
-        try:
-            cursor.execute(empty_dc.get_select_query())
-            column_names = [desc[0] for desc in cursor.description]
-            insert_query = empty_dc.get_insert_query()
-            while rows:= cursor.fetchmany():
-                dc_data = [dc(column_names, row).get_data() for row in rows]
-                pg_cursor.executemany(insert_query, dc_data)
+    try:
+        with pg_connection.cursor() as pg_cursor:
+            for dc in movies_dcs:
+                empty_dc: SQLDataClass = dc([], [])
+                logging.info(f"Таблица {empty_dc.get_table_name()}")
+                cursor.execute(empty_dc.get_select_query())
+                column_names = [desc[0] for desc in cursor.description]
+                insert_query = empty_dc.get_insert_query()
+                while rows:= cursor.fetchmany():
+                    dc_data = [dc(column_names, row).get_data() for row in rows]
+                    pg_cursor.executemany(insert_query, dc_data)
 
-        except sqlite3.Error as e:
-            logging.error(f"Ошибка чтения из SQLite: {e}")
-        except psycopg2.Error as er:
-            logging.error(f"Ошибка записи данных: {er}")
-            pg_connection.rollback()
-            return
-        pg_connection.commit()
+    except sqlite3.Error as e:
+        logging.error(f"Ошибка чтения из SQLite: {e}")
+    except psycopg2.Error as er:
+        logging.error(f"Ошибка записи данных: {er}")
+        pg_connection.rollback()
+        return
+    finally:
+        cursor.close()
     logging.info("Копирование завершено")
 
 
@@ -53,3 +54,5 @@ if __name__ == '__main__':
             **postgres_dsl
     ) as pg_conn:
         load_from_sqlite(conn, pg_conn)
+    conn.close()
+    pg_conn.close()
